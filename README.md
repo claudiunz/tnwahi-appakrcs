@@ -51,5 +51,12 @@ output_csv: Path for output CSV file
 |**Chengwei Feng** | Dataset labelling verification, models and code templates alternatives. | 
 |**Dr Boris Bačić** [@bbacic](https://github.com/bbacic) | *Privacy-Preserving Augmented Video Analysis with Diagnostic Information Streaming for Home Use and Analytical Healthcare Systems* concept.  <br/> The concept and technology with added automated knee exercise summary applied on real-life knee rehabilitation case study. <br/> Project leader, supervision, project code reviews, bug and issues reporting, and overall project testing. <br/> CSV data streaming integration and verification. <br/> Authoring and development of adaptive and unsupervised approach for knee exercise recognition and timeline indexing, visualisation and summary (implemented separately in Matlab) as the third  stage processing workflow [^1] (see also the pre-print [^2] of [^1]). <br/> Knee rehabilitation dataset recording protocol. <br/> Case study video capture, files conversion and labelling. <br/> GitHub project reviewer and co-contributor. Note: https://github.com/bbacic/tnwahi-appakrcs/ is a contributing fork of [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs). <br/> | 
 
+### Version History for the [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs) Project
+| Version | Date | Action/Reason/Acknowledgements | Project/Filename | 
+| :--- | --- |  --- | --- |
+| 3.2 | Dec 2024 | CITISIA 2024 publication [^1]. <br/> Refinements, issues and bug fixes of ver. 3 PoC for the scope of the publication.| main.py |
+| 3 | Nov 2024 | Extra camera view and diagnostic information processing from ver. 2 PoC| main.py |
+| 2 | Jan 2024 | Privacy-preserving augmented video analysis with diagnostic information streaming and visualisation (PoC)| main.py |
+| 1 | Aug 2023 | Initial knee exercise proof-of-concept (PoC). <br/> Video & Image Processing - Assignment 2 [MR-video-processing] (https://github.com/claudiunz/MR-video-processing). | pose_estimation.py -> main.py  |
 
 ### Reference
