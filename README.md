@@ -4,7 +4,7 @@
 This project implements a methodology for analysing knee angles from video footage using MediaPipe Pose estimation. It provides near real-time visualisation $${\large\color{dodgerblue}&#x24D8; }$$  and analysis of knee movements, supporting both front-view and side-view perspectives.  
 
 > [!NOTE]
-> Near real-time visualisation of MP4 videos depends on the computer. <br/>
+> Near real-time visualisation of MP4 videos depends on the computer specification. <br/>
 > <ins>Hint</ins>: If using a decade old laptop for fast scrolling and A-B sequence analysis, consider capturing first a screen cast of the augmented video replay.
 > 
 > As a stand-alone project, this source code is the second part of the three stage processing workflow intended for home use and near-future analytical healthcare systems. See more: Privacy-preserving augmented knee rehabilitation case study [^1][^2].
@@ -29,6 +29,11 @@ This project implements a methodology for analysing knee angles from video foota
 - NumPy
 
 ## Installation
+If running the project on a computer with Python and OpenCV installed, install Google MediaPipe by:
+```bash
+pip install mediapipe
+```
+or by preparing your own `requirements.txt` for project deployments on multiple machines of similar specifications:
 ```bash
 pip install -r requirements.txt
 ```
@@ -47,16 +52,16 @@ output_csv: Path for output CSV file
 | Contributor | Description | 
 | :--- | --- |
 |**Claudiu Vasile** [@claudiunz](https://github.com/claudiunz) | Python code prototyping, testing, and development. <br/> Github main project [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs) |
-|**Dr Marian G. Ciucă** | Computational geometry and trigonometric equations for knee agle calculations. |
+|**Dr Marian G. Ciucă** | Computational geometry and trigonometric equations for knee angle calculations. |
 |**Chengwei Feng** | Dataset labelling verification, models and code templates alternatives. | 
 |**Dr Boris Bačić** [@bbacic](https://github.com/bbacic) | *Privacy-Preserving Augmented Video Analysis with Diagnostic Information Streaming for Home Use and Analytical Healthcare Systems* concept.  <br/> The concept and technology with added automated knee exercise summary applied on real-life knee rehabilitation case study. <br/> Project leader, supervision, project code reviews, bug and issues reporting, and overall project testing. <br/> CSV data streaming integration and verification. <br/> Authoring and development of adaptive and unsupervised approach for knee exercise recognition and timeline indexing, visualisation and summary (implemented separately in Matlab) as the third  stage processing workflow [^1] (see also the pre-print [^2] of [^1]). <br/> Knee rehabilitation dataset recording protocol. <br/> Case study video capture, files conversion and labelling. <br/> GitHub project reviewer and co-contributor. Note: https://github.com/bbacic/tnwahi-appakrcs/ is a contributing fork of [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs). <br/> | 
 
 ### Version History of the [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs) Project
-| Version | Date | Action/Reason/Acknowledgements | Project/Filename | 
+| Version | Date | Summary/Action/Rationale/Acknowledgements | Project/Filename | 
 | :--- | --- |  --- | --- |
-| 3.2 | Dec 2024 | CITISIA 2024 publication [^1]. <br/> Refinements, issues and bug fixes of ver. 3 PoC for the scope of the publication.| main.py |
-| 3 | Nov 2024 | Extra camera view and diagnostic information processing from ver. 2 PoC| main.py |
-| 2 | Jan 2024 | Privacy-preserving augmented video analysis with diagnostic information streaming and visualisation (PoC)| main.py |
-| 1 | Aug 2023 | Initial knee exercise proof-of-concept (PoC). <br/> Video & Image Processing - Assignment 2 [MR-video-processing] (https://github.com/claudiunz/MR-video-processing). |  main.py <- pose_estimation.py |
+| 3.2 | Dec 2024 | CITISIA 2024 publication [^1]. <br/> Refinements, issues and bug fixes of PoC (ver. 3) for the scope of the publication.| main.py |
+| 3 | Nov 2024 | Front and side camera view with extended diagnostic information processing (from ver. 2 PoC) | main.py <- script.py |
+| 2 | May 2024 | Privacy-preserving augmented video analysis with diagnostic information streaming and visualisation (PoC)| script.py |
+| 1 | Aug 2023 | Initial project scoping: Specifications and development options for knee exercise. <br/> Beta version of Prototyping and proof-of-concept (PoC). | script.py   |
 
 ### Reference
