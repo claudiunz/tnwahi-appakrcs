@@ -33,7 +33,7 @@ This project implements a methodology for analysing knee angles from video foota
 pip install -r requirements.txt
 ```
 ## Usage
-At command prompt or in Mac OS/Linux Terminal
+At `Windows` Command Prompt, or in `MacOS`/`Linux` Terminal, use the following sytax:
 ``` 
 python main.py video_file output_csv [--export_knee {left,right,both}] [--direction {left,right,forward}]
 
@@ -49,7 +49,7 @@ output_csv: Path for output CSV file
 |**Claudiu Vasile** [@claudiunz](https://github.com/claudiunz) | Python code prototyping, testing, and development. <br/> Github main project [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs) |
 |**Dr Marian G. Ciucă** | Computational geometry and trigonometric equations for knee agle calculations. |
 |**Chengwei Feng** | Dataset labelling verification, models and code templates alternatives. | 
-|**Dr Boris Bačić** [@bbacic](https://github.com/bbacic) | *Privacy-Preserving Augmented Video Analysis with Diagnostic Information Streaming for Home Use and Analytical Healthcare Systems* concept. <br/> Project leader, supervision, project code reviews, bug and issues reporting, and overall project testing. <br/> *Privacy-Preserving Augmented Video Analysis with Diagnostic Information Streaming for Home Use and Analytical Healthcare Systems* and summary applied on real-life Knee Rehabilitation Case Study. <br/> CSV data streaming integration and verification. <br/> Author and developer of adaptive and unsupervised approach for knee exercise recognition and timeline indexing, visualisation and summary (implemented separately in Matlab) as the third  stage processing workflow [^1] (see also the pre-print [^2] of [^1]). <br/> Knee rehabilitation dataset recording protocol. <br/> Case study video capture, files conversion and labelling. <br/> GitHub project reviewer and co-contributor. Note: https://github.com/bbacic/tnwahi-appakrcs/ is a contributing fork of [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs). <br/> | 
+|**Dr Boris Bačić** [@bbacic](https://github.com/bbacic) | *Privacy-Preserving Augmented Video Analysis with Diagnostic Information Streaming for Home Use and Analytical Healthcare Systems* concept.  <br/> The concept and technology with added automated knee exercise summary applied on real-life knee rehabilitation case study. <br/> Project leader, supervision, project code reviews, bug and issues reporting, and overall project testing. <br/> CSV data streaming integration and verification. <br/> Authoring and development of adaptive and unsupervised approach for knee exercise recognition and timeline indexing, visualisation and summary (implemented separately in Matlab) as the third  stage processing workflow [^1] (see also the pre-print [^2] of [^1]). <br/> Knee rehabilitation dataset recording protocol. <br/> Case study video capture, files conversion and labelling. <br/> GitHub project reviewer and co-contributor. Note: https://github.com/bbacic/tnwahi-appakrcs/ is a contributing fork of [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs). <br/> | 
 
 
 ### Reference
