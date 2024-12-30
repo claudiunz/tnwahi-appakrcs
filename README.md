@@ -93,7 +93,7 @@ If using **LaTeX** or **Overleaf**, to preserve Unicode/special characters, here
 | 3.2 | Dec 2024 | CITISIA 2024 publication [^1]. <br/> Refinements, issues and bug fixes of PoC (ver. 3) for the scope of the publication.| main.py |
 | 3 | Nov 2024 | Front and side camera view with extended diagnostic information processing (from ver. 2 PoC) | main.py <- script.py |
 | 2 | May 2024 | Privacy-preserving augmented video analysis with diagnostic information streaming and visualisation (PoC)| script.py |
-| 1 | Aug 2023 | Initial project scoping: Specifications and development options for knee exercise. <br/> Beta version of Prototyping and proof-of-concept (PoC). | script.py   |
+| 1 | Aug 2023 | General project prototyping and investigations. <br/> Beta version of proof-of-concept (PoC). | script.py   |
 
 &nbsp;
 ### Reference
