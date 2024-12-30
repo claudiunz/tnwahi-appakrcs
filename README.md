@@ -52,12 +52,15 @@ output_csv: Path for output CSV file
 If using our code or models for your research, please cite [^1] or use BibTeX format:
 ```
 @inproceedings{bbacic2024simple,
-    author={Bačić, Boris and Vasile, Claudiu and Ciucă, Marian and Feng, Chengwei},
+    author={Bačić, Boris and Vasile, Claudiu and Feng, Chengwei and Ciucă, Marian},
     title={Towards nation-wide analytical healthcare infrastructures: A privacy-preserving augmented knee rehabilitation case study},
     booktitle = {Conference on Innovative Technologies in Intelligent Systems & Industrial Applications (CITISIA 2024)},
     year = {2024}
 }
 ```
+If using **LaTeX** or **Overleaf**, here is a recommended BibTeX format (to preserve special characters):
+
+
 &nbsp;
 ### Contributors
 | Contributor | Description | 
