@@ -82,7 +82,7 @@ If using **LaTeX** or **Overleaf**, to preserve Unicode/special characters, here
 |**Claudiu Vasile** [@claudiunz](https://github.com/claudiunz) | Python code, incremental prototyping, testing, and development. <br/> Github main project [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs) |
 |**Dr Marian G. Ciucă** &nbsp; | Computational geometry and trigonometric equations for knee angle calculations. |
 |**Chengwei Feng** | Dataset labelling verification, models and code templates alternatives. | 
-|**Dr Boris Bačić**  <br/> [@bbacic](https://github.com/bbacic) | Team leader, supervision, project code reviewing, and project codebase[^1] development, testing and integration.  GitHub project reviewer and co-contributor<sup>1)</sup>. <br/> | 
+|**Dr Boris Bačić**  <br/> [@bbacic](https://github.com/bbacic) | Project leader, supervision, codebase[^1] development, testing, reviewing, and integration.  GitHub project reviewer and co-contributor<sup>1)</sup>. <br/> | 
 
 <sup>1)</sup>Note: https://github.com/bbacic/tnwahi-appakrcs/ is a contributing fork of [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs). 
 <br/>
