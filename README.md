@@ -49,7 +49,7 @@ output_csv: Path for output CSV file
 --direction: Override foot direction detection
 ```
 ### Citation
-If using our code or models for your research, please cite [^1] or use BibTeX format:
+If using our code, algorithms or models for your research, please cite [^1] or use BibTeX format:
 ```
 @inproceedings{bbacic2024simple,
     author={Bačić, Boris and Vasile, Claudiu and Feng, Chengwei and Ciucă, Marian},
@@ -61,7 +61,7 @@ If using our code or models for your research, please cite [^1] or use BibTeX fo
     address = {Sydney, NSW},
 }
 ```
-If using **LaTeX** or **Overleaf**, to preserve Unicode/special characters, here is a recommended BibTeX format:
+If using **LaTeX** or **Overleaf**, to preserve Unicode/special characters, a recommended BibTeX format is:
 ```
 @inproceedings{bbacic2024simpleTeX,
     author={Ba{\vc}i{\'c}, B and Vasile, C and Feng, C and Ciuc{\ua}, M},
@@ -82,7 +82,7 @@ If using **LaTeX** or **Overleaf**, to preserve Unicode/special characters, here
 |**Claudiu Vasile** <br/>[@claudiunz](https://github.com/claudiunz) | Python code, incremental prototyping, testing, and development. <br/> Github main project [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs). |
 |**Dr Marian G. Ciucă** &nbsp; | Computational geometry and trigonometric equations for knee angle calculations. |
 |**Chengwei Feng** | Dataset labelling verification, models and code templates alternatives. | 
-|**Dr Boris Bačić**  <br/> [@bbacic](https://github.com/bbacic) | Project leader, supervision, codebase[^1] development, testing, reviewing, and integration.   <br/>GitHub project reviewer and co-contributor.<sup>1)</sup> <br/> | 
+|**Dr Boris Bačić**  <br/> [@bbacic](https://github.com/bbacic) | Project leader, supervision, codebase development, testing, reviewing, and integration[^1].   <br/>GitHub project reviewer and co-contributor.<sup>1)</sup> <br/> | 
 
 <sup>1)</sup>Note: https://github.com/bbacic/tnwahi-appakrcs/ is a contributing fork of [tnwahi-appakrcs](https://github.com/claudiunz/tnwahi-appakrcs). 
 <br/>
@@ -91,8 +91,8 @@ If using **LaTeX** or **Overleaf**, to preserve Unicode/special characters, here
 | Version | Date | Summary/Action/Rationale/Acknowledgements | Project/Filename | 
 | :--- | --- |  --- | --- |
 | 3.2 | Dec 2024 | CITISIA 2024 publication [^1]. <br/> Refinements, issues and bug fixes of PoC (ver. 3) for the scope of the publication.| main.py |
-| 3 | Nov 2024 | Front and side camera view with extended diagnostic information processing (from ver. 2 PoC) | main.py <- script.py |
-| 2 | May 2024 | Privacy-preserving augmented video analysis with diagnostic information streaming and visualisation (PoC)| script.py |
+| 3 | Nov 2024 | Front and side camera view with extended diagnostic information processing (from ver. 2 PoC). | main.py <- script.py |
+| 2 | May 2024 | Privacy-preserving augmented video analysis with diagnostic information streaming and visualisation (PoC).| script.py |
 | 1 | Aug 2023 | General project prototyping and investigations. <br/> Beta version of proof-of-concept (PoC). | script.py   |
 
 &nbsp;
