@@ -9,6 +9,10 @@ import queue
 import os
 import sys
 import numpy as np
+import glob
+import urllib.request
+import requests
+import time
 
 # Try to import YOLO for the yolo3d option
 try:
@@ -16,8 +20,20 @@ try:
     YOLO_AVAILABLE = True
 except ImportError:
     YOLO_AVAILABLE = False
-    print("Warning: ultralytics not installed. YOLO3D model will not be available.")
+    print("Warning: ultralytics not installed. YOLO2D model will not be available.")
     print("Install with: pip install ultralytics")
+
+# Try to import MMPose for the mmpose options
+try:
+    from mmpose.apis import inference_topdown, init_model
+    from mmpose.utils import register_all_modules
+    import mmcv
+    MMPOSE_AVAILABLE = True
+    # Register all modules to enable model loading
+    register_all_modules()
+except ImportError:
+    MMPOSE_AVAILABLE = False
+    print("Warning: MMPose not available. Install with: pip install openmim && mim install mmengine && mim install 'mmcv>=2.0.1' && mim install 'mmpose>=1.1.0'")
 
 # Custom pose connections
 POSE_CONNECTIONS_BODY = [
@@ -48,9 +64,26 @@ YOLO_KEYPOINT_INDICES = {
     'right_ankle': 16
 }
 
+# MMPose keypoint indices (COCO format, same as YOLO)
+MMPOSE_KEYPOINT_INDICES = {
+    'left_hip': 11,
+    'left_knee': 13, 
+    'left_ankle': 15,
+    'right_hip': 12,
+    'right_knee': 14,
+    'right_ankle': 16,
+    'left_foot_index': 19,  # left big toe
+    'right_foot_index': 20  # right big toe
+}
+
 def delta(a, b, c):
     # Determine the position of a point regarding the line determined by another two points
     return a.x * b.y + b.x * c.y + c.x * a.y - a.x * c.y - b.x * a.y - c.x * b.y
+
+def delta_mmpose(a, b, c):
+    # Determine the position of a point regarding the line determined by another two points
+    # For MMPose keypoints (arrays with [x, y, confidence] or [x, y, z])
+    return a[0] * b[1] + b[0] * c[1] + c[0] * a[1] - a[0] * c[1] - b[0] * a[1] - c[0] * b[1]
 
 def distance2(a, b):
     # Calculate the Euclidean distance between two points
@@ -161,7 +194,106 @@ def calculate_angle_yolo_2d(keypoints, side='left', direction='side', max_thigh=
         
         return math.degrees(math.acos(cos_angle))
 
+def calculate_angle_mmpose_2d(keypoints, side='left', direction='side', max_thigh=None, max_calf=None):
+    """
+    Calculate knee angle from MMPose keypoints using 2D method (similar to MediaPipe 2D)
+    Args:
+        keypoints: MMPose keypoints array [x, y, confidence] for each point
+        side: 'left' or 'right'
+        direction: 'side' or 'forward'
+        max_thigh: maximum thigh length (for front view)
+        max_calf: maximum calf length (for front view)
+    Returns:
+        angle in degrees
+    """
+    if side == 'left':
+        hip_idx = MMPOSE_KEYPOINT_INDICES['left_hip']
+        knee_idx = MMPOSE_KEYPOINT_INDICES['left_knee']
+        ankle_idx = MMPOSE_KEYPOINT_INDICES['left_ankle']
+    else:
+        hip_idx = MMPOSE_KEYPOINT_INDICES['right_hip']
+        knee_idx = MMPOSE_KEYPOINT_INDICES['right_knee']
+        ankle_idx = MMPOSE_KEYPOINT_INDICES['right_ankle']
+    
+    # Extract coordinates (MMPose format: [x, y, confidence])
+    hip = keypoints[hip_idx]
+    knee = keypoints[knee_idx]
+    ankle = keypoints[ankle_idx]
+    
+    # Check confidence scores (only use if confidence > 0.5)
+    if hip[2] < 0.5 or knee[2] < 0.5 or ankle[2] < 0.5:
+        return 0
+    
+    if direction == 'forward':
+        # Project points onto vertical plane (similar to MediaPipe front view)
+        proj_thigh = abs(hip[1] - knee[1])  
+        proj_calf = abs(knee[1] - ankle[1])  
+        
+        thigh_ratio = proj_thigh / max_thigh if max_thigh and max_thigh != 0 else 0
+        calf_ratio = proj_calf / max_calf if max_calf and max_calf != 0 else 0
+        
+        thigh_ratio = max(-1, min(1, thigh_ratio))
+        calf_ratio = max(-1, min(1, calf_ratio))
+        
+        angle_thigh = math.degrees(math.acos(thigh_ratio)) if thigh_ratio <= 1 else 0
+        angle_calf = math.degrees(math.acos(calf_ratio)) if calf_ratio <= 1 else 0
+        
+        return 180 - angle_thigh - angle_calf
+    else:
+        # Side view calculation
+        thigh_len = math.sqrt((knee[0] - hip[0])**2 + (knee[1] - hip[1])**2)
+        calf_len = math.sqrt((ankle[0] - knee[0])**2 + (ankle[1] - knee[1])**2)
+        hip_ankle_len = math.sqrt((ankle[0] - hip[0])**2 + (ankle[1] - hip[1])**2)
+        
+        if thigh_len * calf_len == 0:
+            return 0
+            
+        cos_angle = (calf_len**2 + thigh_len**2 - hip_ankle_len**2)/(2*calf_len*thigh_len)
+        cos_angle = max(-1, min(1, cos_angle))
+        
+        return math.degrees(math.acos(cos_angle))
 
+def calculate_angle_mmpose_3d(keypoints_3d, side='left'):
+    """
+    Calculate 3D knee angle from MMPose 3D keypoints
+    Args:
+        keypoints_3d: MMPose 3D keypoints array [x, y, z] for each point (in mm)
+        side: 'left' or 'right'
+    Returns:
+        angle in degrees
+    """
+    if side == 'left':
+        hip_idx = MMPOSE_KEYPOINT_INDICES['left_hip']
+        knee_idx = MMPOSE_KEYPOINT_INDICES['left_knee']
+        ankle_idx = MMPOSE_KEYPOINT_INDICES['left_ankle']
+    else:
+        hip_idx = MMPOSE_KEYPOINT_INDICES['right_hip']
+        knee_idx = MMPOSE_KEYPOINT_INDICES['right_knee']
+        ankle_idx = MMPOSE_KEYPOINT_INDICES['right_ankle']
+    
+    # Extract 3D coordinates
+    hip = keypoints_3d[hip_idx]
+    knee = keypoints_3d[knee_idx]
+    ankle = keypoints_3d[ankle_idx]
+    
+    # Calculate 3D vectors
+    vec_knee_hip = np.array([hip[0] - knee[0], hip[1] - knee[1], hip[2] - knee[2]])
+    vec_knee_ankle = np.array([ankle[0] - knee[0], ankle[1] - knee[1], ankle[2] - knee[2]])
+    
+    # Calculate dot product and magnitudes
+    dot_product = np.dot(vec_knee_hip, vec_knee_ankle)
+    magnitude_knee_hip = np.linalg.norm(vec_knee_hip)
+    magnitude_knee_ankle = np.linalg.norm(vec_knee_ankle)
+    
+    # Avoid division by zero
+    if magnitude_knee_hip * magnitude_knee_ankle == 0:
+        return 0
+    
+    # Calculate angle using dot product formula
+    cos_angle = dot_product / (magnitude_knee_hip * magnitude_knee_ankle)
+    cos_angle = max(-1, min(1, cos_angle))  # Clamp to [-1, 1] to avoid numerical errors
+    
+    return math.degrees(math.acos(cos_angle))
 
 def calculate_angle(a, b, c, view_type='side', max_ab=None, max_bc=None):
     """
@@ -204,8 +336,66 @@ def calculate_angle(a, b, c, view_type='side', max_ab=None, max_bc=None):
         
         return math.degrees(math.acos(cos_angle))
 
+def download_if_missing(config_file, config_url, checkpoint_pattern, checkpoint_url):
+    import glob
+    # Download config if missing
+    if not os.path.exists(config_file):
+        print(f"[AutoDownload] Downloading config: {config_file}")
+        r = requests.get(config_url)
+        if r.status_code == 200:
+            with open(config_file, 'w') as f:
+                f.write(r.text)
+        else:
+            print(f"[AutoDownload] Failed to download config from {config_url}")
+    # Download checkpoint if missing
+    checkpoint_files = glob.glob(checkpoint_pattern)
+    if not checkpoint_files:
+        print(f"[AutoDownload] Downloading checkpoint: {checkpoint_url}")
+        urllib.request.urlretrieve(checkpoint_url, checkpoint_url.split('/')[-1])
+
+def export_frame_to_csv(writer, header, frame_count, fps, frame_processing_time_ms, 
+                       left_hip=None, left_knee=None, left_ankle=None, left_foot_index=None,
+                       right_hip=None, right_knee=None, right_ankle=None, right_foot_index=None,
+                       left_foot_direction=None, angle_left_knee=None, left_knee_correct=None,
+                       right_foot_direction=None, angle_right_knee=None, right_knee_correct=None,
+                       export_knee='both'):
+    """Export frame data to CSV using a dictionary-based approach."""
+    # Build a dictionary for the row
+    row_dict = {col: None for col in header}
+    row_dict['frame'] = frame_count
+    row_dict['timeframe'] = frame_count / fps
+    row_dict['frame_processing_time_ms'] = frame_processing_time_ms
+
+    def fill_kpt(prefix, kpt):
+        if kpt is not None:
+            row_dict[f'{prefix}_x'] = getattr(kpt, 'x', None)
+            row_dict[f'{prefix}_y'] = getattr(kpt, 'y', None)
+            row_dict[f'{prefix}_z'] = getattr(kpt, 'z', None)
+            row_dict[f'{prefix}_conf'] = getattr(kpt, 'visibility', None) if hasattr(kpt, 'visibility') else (getattr(kpt, 'conf', None) if hasattr(kpt, 'conf') else None)
+
+    # Fill in tracked knee data
+    if export_knee in ('left', 'both'):
+        fill_kpt('left_hip', left_hip)
+        fill_kpt('left_knee', left_knee)
+        fill_kpt('left_ankle', left_ankle)
+        fill_kpt('left_foot_index', left_foot_index)
+        row_dict['left_foot_direction'] = left_foot_direction
+        row_dict['left_knee_angle'] = angle_left_knee
+        row_dict['left_knee_incorrect'] = left_knee_correct
+
+    if export_knee in ('right', 'both'):
+        fill_kpt('right_hip', right_hip)
+        fill_kpt('right_knee', right_knee)
+        fill_kpt('right_ankle', right_ankle)
+        fill_kpt('right_foot_index', right_foot_index)
+        row_dict['right_foot_direction'] = right_foot_direction
+        row_dict['right_knee_angle'] = angle_right_knee
+        row_dict['right_knee_incorrect'] = right_knee_correct
+
+    writer.writerow([row_dict.get(col, None) for col in header])
+
 def process_video(video_file, export_knee, output_csv=None, direction=None, model='mp2d'):
-    """Process video file for knee angle analysis"""
+    """Process video file and export knee angle data to CSV."""
     # Initialize video capture
     cap_file = cv2.VideoCapture(video_file)
     if not cap_file.isOpened():
@@ -223,6 +413,8 @@ def process_video(video_file, export_knee, output_csv=None, direction=None, mode
     # Initialize model based on choice
     mp_pose = None
     yolo_model = None
+    mmpose_model_2d = None
+    mmpose_model_3d = None
     
     if model in ['mp2d', 'mp3d']:
         # Set up MediaPipe Pose with model complexity based on 2D/3D choice
@@ -236,19 +428,85 @@ def process_video(video_file, export_knee, output_csv=None, direction=None, mode
         if not YOLO_AVAILABLE:
             raise ValueError("YOLO not available. Install ultralytics: pip install ultralytics")
         # Initialize YOLO pose model
-        yolo_model = YOLO('yolo11n-pose.pt')  # Using YOLO11 nano pose model
+        yolo_model = YOLO(os.path.join('models', 'yolo11n-pose.pt'))  # Using YOLO11 nano pose model
+    elif model in ['mmpose2d', 'mmpose3d']:
+        if not MMPOSE_AVAILABLE:
+            raise ValueError("MMPose not available. Install with: pip install openmim && mim install mmengine && mim install 'mmcv>=2.0.1' && mim install 'mmpose>=1.1.0'")
         
+        # Initialize MMPose models using proper configuration
+        try:
+            import subprocess
+            import sys
+            import glob
+            
+            # Use stable RTMPose models that are known to work
+            if model == 'mmpose2d':
+                # Use RTMPose-l for 2D wholebody pose estimation (COCO-WholeBody, 133 keypoints, 256x192)
+                config_name = 'rtmpose-l_8xb512-700e_body8-halpe26-256x192'
+                checkpoint_pattern = 'rtmpose-l_simcc-body7_pt-body7-halpe26_700e-256x192-*.pth'
+                print("Using RTMPose-l for 2D wholebody pose estimation (COCO-WholeBody, 133 keypoints, 256x192)...")
+                config_file = os.path.join('models', f'{config_name}.py')
+                print(f"[MMPose2D] Config: {config_file}, Checkpoint pattern: {checkpoint_pattern}")
+                if not os.path.exists(config_file):
+                    raise ValueError(
+                        f"Configuration file {config_file} not found. Please download it manually using:\n"
+                        f"mim download mmpose --config {config_name} --dest models"
+                    )
+                checkpoint_files = glob.glob(os.path.join('models', checkpoint_pattern))
+                if not checkpoint_files:
+                    raise ValueError(
+                        f"No checkpoint file found matching pattern {checkpoint_pattern}. "
+                        "Please download the model checkpoint manually using:\n"
+                        f"mim download mmpose --config {config_name} --dest models"
+                    )
+                checkpoint_file = checkpoint_files[0]
+                device = 'cuda' if cv2.cuda.getCudaEnabledDeviceCount() > 0 else 'cpu'
+                mmpose_model_2d = init_model(config_file, checkpoint_file, device=device)
+            elif model == 'mmpose3d':
+                # Use RTMW-l for 3D pose estimation
+                config_name = 'rtmw-l_8xb1024-270e_cocktail14-256x192'
+                checkpoint_pattern = 'rtmw-dw-x-l_simcc-cocktail14_270e-256x192-*.pth'
+                print("Using RTMW-l (Real-Time Whole-body) for 3D pose estimation...")
+                config_file = os.path.join('models', f'{config_name}.py')
+                print(f"[MMPose3D] Config: {config_file}, Checkpoint pattern: {checkpoint_pattern}")
+                if not os.path.exists(config_file):
+                    raise ValueError(
+                        f"Configuration file {config_file} not found. Please download it manually using:\n"
+                        f"mim download mmpose --config {config_name} --dest models"
+                    )
+                checkpoint_files = glob.glob(os.path.join('models', checkpoint_pattern))
+                if not checkpoint_files:
+                    raise ValueError(
+                        f"No checkpoint file found matching pattern {checkpoint_pattern}. "
+                        "Please download the model checkpoint manually using:\n"
+                        f"mim download mmpose --config {config_name} --dest models"
+                    )
+                checkpoint_file = checkpoint_files[0]
+                device = 'cuda' if cv2.cuda.getCudaEnabledDeviceCount() > 0 else 'cpu'
+                mmpose_model_2d = init_model(config_file, checkpoint_file, device=device)
+            
+        except Exception as e:
+            print(f"MMPose initialization failed: {e}")
+            # Final fallback: disable MMPose and suggest using other models
+            raise ValueError(f"Failed to initialize MMPose model: {e}. Please try using --model mp2d, mp3d, or yolo2d instead.")
+
     mp_drawing = mp.solutions.drawing_utils
 
     if output_csv:
         csv_file = open(output_csv, mode='w', newline='')
         writer = csv.writer(csv_file)
-        writer.writerow(['timeframe', 'left_hip_x', 'left_hip_y', 'left_hip_z', 'left_knee_x', 'left_knee_y', 'left_knee_z',
-                         'left_ankle_x', 'left_ankle_y', 'left_ankle_z', 'left_foot_index_x', 'left_foot_index_y', 'left_foot_index_z',
-                         'left_heel_x', 'left_heel_y', 'left_heel_z', 'left_foot_direction', 'left_knee_angle', 'left_knee_correct',
-                         'right_hip_x', 'right_hip_y', 'right_hip_z', 'right_knee_x', 'right_knee_y', 'right_knee_z',
-                         'right_ankle_x', 'right_ankle_y', 'right_ankle_z', 'right_foot_index_x', 'right_foot_index_y', 'right_foot_index_z',
-                         'right_heel_x', 'right_heel_y', 'right_heel_z', 'right_foot_direction', 'right_knee_angle', 'right_knee_correct'])
+        header = ['frame', 'timeframe', 'frame_processing_time_ms',
+            'left_hip_x', 'left_hip_y', 'left_hip_z', 'left_hip_conf',
+            'left_knee_x', 'left_knee_y', 'left_knee_z', 'left_knee_conf',
+            'left_ankle_x', 'left_ankle_y', 'left_ankle_z', 'left_ankle_conf',
+            'left_foot_index_x', 'left_foot_index_y', 'left_foot_index_z', 'left_foot_index_conf',
+            'left_foot_direction', 'left_knee_angle', 'left_knee_incorrect',
+            'right_hip_x', 'right_hip_y', 'right_hip_z', 'right_hip_conf',
+            'right_knee_x', 'right_knee_y', 'right_knee_z', 'right_knee_conf',
+            'right_ankle_x', 'right_ankle_y', 'right_ankle_z', 'right_ankle_conf',
+            'right_foot_index_x', 'right_foot_index_y', 'right_foot_index_z', 'right_foot_index_conf',
+            'right_foot_direction', 'right_knee_angle', 'right_knee_incorrect']
+        writer.writerow(header)
 
     # Initialize plots
     plt.ion()
@@ -272,6 +530,7 @@ def process_video(video_file, export_knee, output_csv=None, direction=None, mode
 
     frame_count = 0
     while True:
+        frame_processing_time_start = time.time()
         # Read frame from video file
         ret_file, frame_file = cap_file.read()
 
@@ -286,6 +545,9 @@ def process_video(video_file, export_knee, output_csv=None, direction=None, mode
         left_knee_correct = right_knee_correct = 1
 
         timeframes.append(frame_count / fps)
+
+        # Calculate frame processing time at the start
+        frame_processing_time_ms = 0  # Initialize to 0, will be updated at the end of processing
 
         if model == 'yolo2d':
             # Process with YOLO
@@ -485,6 +747,428 @@ def process_video(video_file, export_knee, output_csv=None, direction=None, mode
                         right_foot_direction = ""
                         right_knee_correct = 1
 
+        elif model in ['mmpose2d', 'mmpose3d']:
+            # Process with MMPose
+            try:
+                # Convert BGR to RGB for MMPose
+                img_rgb = cv2.cvtColor(frame_file, cv2.COLOR_BGR2RGB)
+                
+                # Create a bounding box for the whole image (top-down approach)
+                h, w = img_rgb.shape[:2]
+                bbox = np.array([[0, 0, w, h]], dtype=np.float32)  # [x1, y1, x2, y2]
+                
+                # Perform inference with proper bbox format
+                pose_results = inference_topdown(mmpose_model_2d, img_rgb, bbox, bbox_format='xyxy')
+                
+                # Default line color for MMPose
+                line_color = (255, 255, 255)  # White color for lines
+                
+                # Extract keypoints - handle MMPose v1.x format
+                keypoints = None
+                keypoint_scores = None
+                
+                if pose_results and len(pose_results) > 0:
+                    result = pose_results[0]
+                    
+                    # MMPose v1.x uses pred_instances
+                    if hasattr(result, 'pred_instances'):
+                        pred_instances = result.pred_instances
+                        
+                        if hasattr(pred_instances, 'keypoints') and len(pred_instances.keypoints) > 0:
+                            # Convert tensor to numpy if needed
+                            if hasattr(pred_instances.keypoints, 'cpu'):
+                                keypoints = pred_instances.keypoints.cpu().numpy()[0]  # First person
+                            else:
+                                keypoints = pred_instances.keypoints[0]
+                        
+                        if hasattr(pred_instances, 'keypoint_scores') and len(pred_instances.keypoint_scores) > 0:
+                            # Convert tensor to numpy if needed
+                            if hasattr(pred_instances.keypoint_scores, 'cpu'):
+                                keypoint_scores = pred_instances.keypoint_scores.cpu().numpy()[0]  # First person
+                            else:
+                                keypoint_scores = pred_instances.keypoint_scores[0]
+                
+                # Process keypoints if found
+                if keypoints is not None and len(keypoints) > 0:
+                    # Combine keypoints and scores into the expected format [x, y, confidence]
+                    if keypoint_scores is not None:
+                        keypoints_with_conf = np.column_stack([keypoints, keypoint_scores])
+                    else:
+                        # Add default confidence scores if missing
+                        confidence = np.ones((keypoints.shape[0], 1)) * 0.9
+                        keypoints_with_conf = np.concatenate([keypoints, confidence], axis=1)
+                    
+                    # For MMPose 2D model - compute thigh and calf lengths
+                    # Calculate maximum thigh and calf lengths for front view
+                    left_hip_kpt = keypoints_with_conf[MMPOSE_KEYPOINT_INDICES['left_hip']]
+                    left_knee_kpt = keypoints_with_conf[MMPOSE_KEYPOINT_INDICES['left_knee']]
+                    left_ankle_kpt = keypoints_with_conf[MMPOSE_KEYPOINT_INDICES['left_ankle']]
+                    right_hip_kpt = keypoints_with_conf[MMPOSE_KEYPOINT_INDICES['right_hip']]
+                    right_knee_kpt = keypoints_with_conf[MMPOSE_KEYPOINT_INDICES['right_knee']]
+                    right_ankle_kpt = keypoints_with_conf[MMPOSE_KEYPOINT_INDICES['right_ankle']]
+                    
+                    # Use reasonable confidence threshold
+                    conf_threshold = 0.3
+                    
+                    # Update maximum lengths
+                    if (left_hip_kpt[2] > conf_threshold and left_knee_kpt[2] > conf_threshold and left_ankle_kpt[2] > conf_threshold):
+                        left_thigh_length = max(left_thigh_length, abs(left_hip_kpt[1] - left_knee_kpt[1]))
+                        left_calf_length = max(left_calf_length, abs(left_knee_kpt[1] - left_ankle_kpt[1]))
+                    
+                    if (right_hip_kpt[2] > conf_threshold and right_knee_kpt[2] > conf_threshold and right_ankle_kpt[2] > conf_threshold):
+                        right_thigh_length = max(right_thigh_length, abs(right_hip_kpt[1] - right_knee_kpt[1]))
+                        right_calf_length = max(right_calf_length, abs(right_knee_kpt[1] - right_ankle_kpt[1]))
+                    
+                    # Process selected knees
+                    if export_knee in ('left', 'both'):
+                        # Calculate angle using MMPose method
+                        if model == 'mmpose3d':
+                            # For RTMW 3D models, check if we have actual 3D keypoints
+                            if keypoints_with_conf.shape[1] >= 3:
+                                # We have actual 3D coordinates from RTMW
+                                keypoints_3d = keypoints_with_conf[:, :3]  # x, y, z
+                            else:
+                                # Fallback: simulate 3D by adding z-coordinate
+                                keypoints_3d = np.zeros((len(keypoints_with_conf), 3))
+                                keypoints_3d[:, :2] = keypoints_with_conf[:, :2]  # x, y
+                                keypoints_3d[:, 2] = 0  # z = 0 (simplified)
+                            angle_left_knee = calculate_angle_mmpose_3d(keypoints_3d, 'left')
+                        else:
+                            angle_left_knee = calculate_angle_mmpose_2d(
+                                keypoints_with_conf, 'left',
+                                direction='forward' if direction == 'forward' else 'side',
+                                max_thigh=left_thigh_length,
+                                max_calf=left_calf_length
+                            )
+                        
+                        # Get keypoint coordinates for drawing
+                        if left_hip_kpt[2] > conf_threshold and left_knee_kpt[2] > conf_threshold and left_ankle_kpt[2] > conf_threshold:
+                            # Convert to pixel coordinates
+                            left_hip_x = int(left_hip_kpt[0])
+                            left_hip_y = int(left_hip_kpt[1])
+                            left_knee_x = int(left_knee_kpt[0])
+                            left_knee_y = int(left_knee_kpt[1])
+                            left_ankle_x = int(left_ankle_kpt[0])
+                            left_ankle_y = int(left_ankle_kpt[1])
+                            
+                            # Get foot index for correction logic (if available)
+                            try:
+                                left_foot_index_kpt = keypoints_with_conf[MMPOSE_KEYPOINT_INDICES['left_foot_index']]
+                                left_foot_index_x = int(left_foot_index_kpt[0])
+                                left_foot_index_y = int(left_foot_index_kpt[1])
+                                
+                                # Determine foot direction (same logic as MediaPipe)
+                                if direction:
+                                    left_foot_direction = direction
+                                else:
+                                    # Convert to normalized coordinates for comparison
+                                    left_foot_index_norm_x = left_foot_index_kpt[0] / frame_file.shape[1]
+                                    left_ankle_norm_x = left_ankle_kpt[0] / frame_file.shape[1]
+                                    
+                                    if left_foot_index_norm_x < left_ankle_norm_x:
+                                        left_foot_direction = "left"
+                                    elif left_foot_index_norm_x > left_ankle_norm_x:
+                                        left_foot_direction = "right"
+                                    else:
+                                        left_foot_direction = "forward"
+                                
+                                # Knee correction logic (same as MediaPipe)
+                                if left_foot_direction == "forward":
+                                    if delta_mmpose(left_hip_kpt, left_knee_kpt, left_ankle_kpt) < 0:  # check if left knee is on the inside
+                                        line_color = (0, 0, 255)  # Red color for lines if knee is incorrect
+                                        left_knee_correct = 0
+                                    else:
+                                        line_color = (255, 255, 255)  # White color for lines
+                                        left_knee_correct = 1
+                                else:
+                                    if left_foot_direction == "right":
+                                        angle_left_knee = 360 - angle_left_knee
+                                    
+                                    # Convert to normalized coordinates for comparison
+                                    left_knee_norm_x = left_knee_kpt[0] / frame_file.shape[1]
+                                    left_foot_index_norm_x = left_foot_index_kpt[0] / frame_file.shape[1]
+                                    
+                                    if (left_foot_direction == "left" and left_knee_norm_x < left_foot_index_norm_x) or \
+                                       (left_foot_direction == "right" and left_knee_norm_x > left_foot_index_norm_x):
+                                        line_color = (0, 0, 255)  # Red color for lines if knee is incorrect
+                                        left_knee_correct = 0
+                                    else:
+                                        line_color = (255, 255, 255)  # White color for lines
+                                        left_knee_correct = 1
+                            
+                            except (KeyError, IndexError):
+                                left_foot_index_kpt = None  # or skip drawing
+                            
+                            # Draw lines and dots (same style as MediaPipe)
+                            cv2.line(frame_file, (left_hip_x, left_hip_y), (left_knee_x, left_knee_y), line_color, 2)
+                            cv2.line(frame_file, (left_ankle_x, left_ankle_y), (left_knee_x, left_knee_y), line_color, 2)
+                            cv2.circle(frame_file, (left_knee_x, left_knee_y), 10, (128, 0, 128), -1)  # Purple color for left knee dot
+                            if left_foot_index_kpt is not None:
+                                cv2.circle(frame_file, (left_foot_index_x, left_foot_index_y), 10, (0, 0, 255), -1)  # Red color for left foot index dot
+                            
+                            # Add angle text overlay
+                            text_left_knee = f"LEFT KNEE ({model.upper()})\nANGLE: {angle_left_knee:.2f}"
+                            text_x_left = 10
+                            text_y_left = frame_file.shape[0] - 150
+                            for i, line in enumerate(text_left_knee.split('\n')):
+                                cv2.putText(frame_file, line, (text_x_left, text_y_left + i*30), 
+                                          cv2.FONT_HERSHEY_SIMPLEX, 1, (128, 0, 128), 2, cv2.LINE_AA)  # Purple color for left knee text
+                    
+                    else:
+                        # Non-selected left knee
+                        if left_hip_kpt[2] > conf_threshold and left_knee_kpt[2] > conf_threshold and left_ankle_kpt[2] > conf_threshold:
+                            # Calculate angle using MMPose method
+                            if model == 'mmpose3d':
+                                # For RTMW 3D models, check if we have actual 3D keypoints
+                                if keypoints_with_conf.shape[1] >= 3:
+                                    # We have actual 3D coordinates from RTMW
+                                    keypoints_3d = keypoints_with_conf[:, :3]  # x, y, z
+                                else:
+                                    # Fallback: simulate 3D by adding z-coordinate
+                                    keypoints_3d = np.zeros((len(keypoints_with_conf), 3))
+                                    keypoints_3d[:, :2] = keypoints_with_conf[:, :2]  # x, y
+                                    keypoints_3d[:, 2] = 0  # z = 0 (simplified)
+                                angle_left_knee = calculate_angle_mmpose_3d(keypoints_3d, 'left')
+                            else:
+                                angle_left_knee = calculate_angle_mmpose_2d(
+                                    keypoints_with_conf, 'left',
+                                    direction='forward' if direction == 'forward' else 'side',
+                                    max_thigh=left_thigh_length,
+                                    max_calf=left_calf_length
+                                )
+                            
+                            # Convert to pixel coordinates
+                            left_hip_x = int(left_hip_kpt[0])
+                            left_hip_y = int(left_hip_kpt[1])
+                            left_knee_x = int(left_knee_kpt[0])
+                            left_knee_y = int(left_knee_kpt[1])
+                            left_ankle_x = int(left_ankle_kpt[0])
+                            left_ankle_y = int(left_ankle_kpt[1])
+                            
+                            # Draw lines and dots (same style as MediaPipe)
+                            cv2.line(frame_file, (left_hip_x, left_hip_y), (left_knee_x, left_knee_y), line_color, 2)
+                            cv2.line(frame_file, (left_ankle_x, left_ankle_y), (left_knee_x, left_knee_y), line_color, 2)
+                            cv2.circle(frame_file, (left_knee_x, left_knee_y), 10, (0, 255, 0), -1)  # Green color for left knee dot
+                            
+                            # Add angle text overlay
+                            text_left_knee = f"LEFT KNEE ({model.upper()})\nANGLE: {angle_left_knee:.2f}"
+                            text_x_left = 10
+                            text_y_left = frame_file.shape[0] - 150
+                            for i, line in enumerate(text_left_knee.split('\n')):
+                                cv2.putText(frame_file, line, (text_x_left, text_y_left + i*30), 
+                                          cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                            
+                            left_foot_direction = ""
+                            left_knee_correct = 1
+                    
+                    # Process right knee similarly
+                    if export_knee in ('right', 'both'):
+                        # Calculate angle using MMPose method
+                        if model == 'mmpose3d':
+                            # For RTMW 3D models, check if we have actual 3D keypoints
+                            if keypoints_with_conf.shape[1] >= 3:
+                                # We have actual 3D coordinates from RTMW
+                                keypoints_3d = keypoints_with_conf[:, :3]  # x, y, z
+                            else:
+                                # Fallback: simulate 3D by adding z-coordinate
+                                keypoints_3d = np.zeros((len(keypoints_with_conf), 3))
+                                keypoints_3d[:, :2] = keypoints_with_conf[:, :2]
+                                keypoints_3d[:, 2] = 0
+                            angle_right_knee = calculate_angle_mmpose_3d(keypoints_3d, 'right')
+                        else:
+                            angle_right_knee = calculate_angle_mmpose_2d(
+                                keypoints_with_conf, 'right',
+                                direction='forward' if direction == 'forward' else 'side',
+                                max_thigh=right_thigh_length,
+                                max_calf=right_calf_length
+                            )
+                        
+                        # Get keypoint coordinates for drawing
+                        if right_hip_kpt[2] > conf_threshold and right_knee_kpt[2] > conf_threshold and right_ankle_kpt[2] > conf_threshold:
+                            # Convert to pixel coordinates
+                            right_hip_x = int(right_hip_kpt[0])
+                            right_hip_y = int(right_hip_kpt[1])
+                            right_knee_x = int(right_knee_kpt[0])
+                            right_knee_y = int(right_knee_kpt[1])
+                            right_ankle_x = int(right_ankle_kpt[0])
+                            right_ankle_y = int(right_ankle_kpt[1])
+                            
+                            # Get foot index for correction logic (if available)
+                            try:
+                                right_foot_index_kpt = keypoints_with_conf[MMPOSE_KEYPOINT_INDICES['right_foot_index']]
+                                right_foot_index_x = int(right_foot_index_kpt[0])
+                                right_foot_index_y = int(right_foot_index_kpt[1])
+                                
+                                # Determine foot direction (same logic as MediaPipe)
+                                if direction:
+                                    right_foot_direction = direction
+                                else:
+                                    # Convert to normalized coordinates for comparison
+                                    right_foot_index_norm_x = right_foot_index_kpt[0] / frame_file.shape[1]
+                                    right_ankle_norm_x = right_ankle_kpt[0] / frame_file.shape[1]
+                                    
+                                    if right_foot_index_norm_x < right_ankle_norm_x:
+                                        right_foot_direction = "left"
+                                    elif right_foot_index_norm_x > right_ankle_norm_x:
+                                        right_foot_direction = "right"
+                                    else:
+                                        right_foot_direction = "forward"
+                                
+                                # Knee correction logic (same as MediaPipe)
+                                if right_foot_direction == "forward":
+                                    if delta_mmpose(right_hip_kpt, right_knee_kpt, right_ankle_kpt) < 0:  # check if right knee is on the inside
+                                        line_color = (0, 0, 255)  # Red color for lines if knee is incorrect
+                                        right_knee_correct = 0
+                                    else:
+                                        line_color = (255, 255, 255)  # White color for lines
+                                        right_knee_correct = 1
+                                else:
+                                    if right_foot_direction == "right":
+                                        angle_right_knee = 360 - angle_right_knee
+                                    
+                                    # Convert to normalized coordinates for comparison
+                                    right_knee_norm_x = right_knee_kpt[0] / frame_file.shape[1]
+                                    right_foot_index_norm_x = right_foot_index_kpt[0] / frame_file.shape[1]
+                                    
+                                    if (right_foot_direction == "left" and right_knee_norm_x < right_foot_index_norm_x) or \
+                                       (right_foot_direction == "right" and right_knee_norm_x > right_foot_index_norm_x):
+                                        line_color = (0, 0, 255)  # Red color for lines if knee is incorrect
+                                        right_knee_correct = 0
+                                    else:
+                                        line_color = (255, 255, 255)  # White color for lines
+                                        right_knee_correct = 1
+                            
+                            except (KeyError, IndexError):
+                                right_foot_index_kpt = None  # or skip drawing
+                            
+                            # Draw lines (red if incorrect, white if correct)
+                            cv2.line(frame_file, (right_hip_x, right_hip_y), (right_knee_x, right_knee_y), line_color, 2)
+                            cv2.line(frame_file, (right_ankle_x, right_ankle_y), (right_knee_x, right_knee_y), line_color, 2)
+                            # Always blue dot for right knee
+                            cv2.circle(frame_file, (right_knee_x, right_knee_y), 10, (255, 0, 0), -1)
+                            if right_foot_index_kpt is not None:
+                                cv2.circle(frame_file, (right_foot_index_x, right_foot_index_y), 10, (0, 0, 255), -1)
+                            # Always blue text for right knee
+                            text_right_knee = f"RIGHT KNEE ({model.upper()})\nANGLE: {angle_right_knee:.2f}"
+                            text_size, _ = cv2.getTextSize(text_right_knee.split('\n')[1], cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+                            text_x_right = frame_file.shape[1] - text_size[0] - 10
+                            text_y_right = frame_file.shape[0] - 150
+                            for i, line in enumerate(text_right_knee.split('\n')):
+                                cv2.putText(frame_file, line, (text_x_right, text_y_right + i*30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
+                    
+                    else:
+                        # Non-selected right knee
+                        if right_hip_kpt[2] > conf_threshold and right_knee_kpt[2] > conf_threshold and right_ankle_kpt[2] > conf_threshold:
+                            # Calculate angle using MMPose method
+                            if model == 'mmpose3d':
+                                # For RTMW 3D models, check if we have actual 3D keypoints
+                                if keypoints_with_conf.shape[1] >= 3:
+                                    # We have actual 3D coordinates from RTMW
+                                    keypoints_3d = keypoints_with_conf[:, :3]  # x, y, z
+                                else:
+                                    # Fallback: simulate 3D by adding z-coordinate
+                                    keypoints_3d = np.zeros((len(keypoints_with_conf), 3))
+                                    keypoints_3d[:, :2] = keypoints_with_conf[:, :2]
+                                    keypoints_3d[:, 2] = 0
+                                angle_right_knee = calculate_angle_mmpose_3d(keypoints_3d, 'right')
+                            else:
+                                angle_right_knee = calculate_angle_mmpose_2d(
+                                    keypoints_with_conf, 'right',
+                                    direction='forward' if direction == 'forward' else 'side',
+                                    max_thigh=right_thigh_length,
+                                    max_calf=right_calf_length
+                                )
+                            
+                            # Convert to pixel coordinates
+                            right_hip_x = int(right_hip_kpt[0])
+                            right_hip_y = int(right_hip_kpt[1])
+                            right_knee_x = int(right_knee_kpt[0])
+                            right_knee_y = int(right_knee_kpt[1])
+                            right_ankle_x = int(right_ankle_kpt[0])
+                            right_ankle_y = int(right_ankle_kpt[1])
+                            
+                            # Draw lines and dots (same style as MediaPipe)
+                            cv2.line(frame_file, (right_hip_x, right_hip_y), (right_knee_x, right_knee_y), line_color, 2)
+                            cv2.line(frame_file, (right_ankle_x, right_ankle_y), (right_knee_x, right_knee_y), line_color, 2)
+                            cv2.circle(frame_file, (right_knee_x, right_knee_y), 10, (0, 255, 0), -1)  # Green color for right knee dot
+                            
+                            # Add angle text overlay
+                            text_right_knee = f"RIGHT KNEE ({model.upper()})\nANGLE: {angle_right_knee:.2f}"
+                            text_size, _ = cv2.getTextSize(text_right_knee.split('\n')[1], cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
+                            text_x_right = frame_file.shape[1] - text_size[0] - 10
+                            text_y_right = frame_file.shape[0] - 150
+                            for i, line in enumerate(text_right_knee.split('\n')):
+                                cv2.putText(frame_file, line, (text_x_right, text_y_right + i*30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+                    
+                    # Update plots for all models
+                    # Update timeframes with current frame time
+                    current_time = frame_count / fps
+                    timeframes.append(current_time)
+                    left_knee_angles.append(angle_left_knee)
+                    right_knee_angles.append(angle_right_knee)
+                    
+                    if len(left_knee_angles) > 1:
+                        if export_knee in ('left', 'both'):
+                            if left_knee_correct == 0:
+                                ax1.plot(timeframes[-2:], left_knee_angles[-2:], 'r')
+                            else:
+                                ax1.plot(timeframes[-2:], left_knee_angles[-2:], 'purple')
+                        else:
+                            ax1.plot(timeframes[-2:], left_knee_angles[-2:], 'green')
+                    
+                    if len(right_knee_angles) > 1:
+                        if export_knee in ('right', 'both'):
+                            if right_knee_correct == 0:
+                                ax2.plot(timeframes[-2:], right_knee_angles[-2:], 'r')
+                            else:
+                                ax2.plot(timeframes[-2:], right_knee_angles[-2:], 'blue')
+                        else:
+                            ax2.plot(timeframes[-2:], right_knee_angles[-2:], 'green')
+                    
+                    # Show the frame
+                    cv2.imshow(f"Video and Pose Estimation ({model.upper()})", frame_file)
+                    
+                    # Update the plot
+                    plt.pause(0.01)
+                    
+                    # Exit if the 'q' key is pressed
+                    if cv2.waitKey(delay) & 0xFF == ord("q"):
+                        break
+                    
+                    # Update frame processing time before export
+                    frame_processing_time_ms = (time.time() - frame_processing_time_start) * 1000
+
+                    # Export to CSV if requested
+                    if output_csv:
+                        export_frame_to_csv(
+                            writer=writer,
+                            header=header,
+                            frame_count=frame_count,
+                            fps=fps,
+                            frame_processing_time_ms=frame_processing_time_ms,
+                            left_hip=left_hip if 'left_hip' in locals() else None,
+                            left_knee=left_knee if 'left_knee' in locals() else None,
+                            left_ankle=left_ankle if 'left_ankle' in locals() else None,
+                            left_foot_index=left_foot_index if 'left_foot_index' in locals() else None,
+                            right_hip=right_hip if 'right_hip' in locals() else None,
+                            right_knee=right_knee if 'right_knee' in locals() else None,
+                            right_ankle=right_ankle if 'right_ankle' in locals() else None,
+                            right_foot_index=right_foot_index if 'right_foot_index' in locals() else None,
+                            left_foot_direction=left_foot_direction if 'left_foot_direction' in locals() else None,
+                            angle_left_knee=angle_left_knee if 'angle_left_knee' in locals() else None,
+                            left_knee_correct=left_knee_correct if 'left_knee_correct' in locals() else None,
+                            right_foot_direction=right_foot_direction if 'right_foot_direction' in locals() else None,
+                            angle_right_knee=angle_right_knee if 'angle_right_knee' in locals() else None,
+                            right_knee_correct=right_knee_correct if 'right_knee_correct' in locals() else None,
+                            export_knee=export_knee
+                        )
+
+                    frame_count += 1
+
+            except Exception as e:
+                print(f"MMPose processing error: {e}")
+                continue
+
         else:
             # Process with MediaPipe (existing code)
             # Convert the image color space from BGR to RGB
@@ -498,6 +1182,8 @@ def process_video(video_file, export_knee, output_csv=None, direction=None, mode
 
             # Draw pose landmarks on the frame
             if results.pose_landmarks:
+                if frame_count < 3:
+                    print(f"Debug Frame {frame_count}: MediaPipe detected pose landmarks!")
                 if export_knee in ('left', 'both'):
                     left_hip = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HIP]
                     left_knee = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_KNEE]
@@ -728,21 +1414,6 @@ def process_video(video_file, export_knee, output_csv=None, direction=None, mode
                     right_foot_direction = ""
                     right_knee_correct = 1
 
-                if output_csv and frame_count % frame_interval == 0:
-                    writer.writerow([frame_count / fps,
-                                     left_hip.x if left_hip else None, left_hip.y if left_hip else None, left_hip.z if left_hip else None,
-                                     left_knee.x if left_knee else None, left_knee.y if left_knee else None, left_knee.z if left_knee else None,
-                                     left_ankle.x if left_ankle else None, left_ankle.y if left_ankle else None, left_ankle.z if left_ankle else None,
-                                     left_foot_index.x if left_foot_index else None, left_foot_index.y if left_foot_index else None, left_foot_index.z if left_foot_index else None,
-                                     left_heel.x if left_heel else None, left_heel.y if left_heel else None, left_heel.z if left_heel else None,
-                                     left_foot_direction, angle_left_knee, left_knee_correct,
-                                     right_hip.x if right_hip else None, right_hip.y if right_hip else None, right_hip.z if right_hip else None,
-                                     right_knee.x if right_knee else None, right_knee.y if right_knee else None, right_knee.z if right_knee else None,
-                                     right_ankle.x if right_ankle else None, right_ankle.y if right_ankle else None, right_ankle.z if right_ankle else None,
-                                     right_foot_index.x if right_foot_index else None, right_foot_index.y if right_foot_index else None, right_foot_index.z if right_foot_index else None,
-                                     right_heel.x if right_heel else None, right_heel.y if right_heel else None, right_heel.z if right_heel else None,
-                                     right_foot_direction, angle_right_knee, right_knee_correct])
-                
         # Update plots for all models
         left_knee_angles.append(angle_left_knee)
         right_knee_angles.append(angle_right_knee)
@@ -775,16 +1446,61 @@ def process_video(video_file, export_knee, output_csv=None, direction=None, mode
         if cv2.waitKey(delay) & 0xFF == ord("q"):
             break
 
+        # Update frame processing time before export
+        frame_processing_time_ms = (time.time() - frame_processing_time_start) * 1000
+
+        # Export to CSV if requested
+        if output_csv:
+            export_frame_to_csv(
+                writer=writer,
+                header=header,
+                frame_count=frame_count,
+                fps=fps,
+                frame_processing_time_ms=frame_processing_time_ms,
+                left_hip=left_hip if 'left_hip' in locals() else None,
+                left_knee=left_knee if 'left_knee' in locals() else None,
+                left_ankle=left_ankle if 'left_ankle' in locals() else None,
+                left_foot_index=left_foot_index if 'left_foot_index' in locals() else None,
+                right_hip=right_hip if 'right_hip' in locals() else None,
+                right_knee=right_knee if 'right_knee' in locals() else None,
+                right_ankle=right_ankle if 'right_ankle' in locals() else None,
+                right_foot_index=right_foot_index if 'right_foot_index' in locals() else None,
+                left_foot_direction=left_foot_direction if 'left_foot_direction' in locals() else None,
+                angle_left_knee=angle_left_knee if 'angle_left_knee' in locals() else None,
+                left_knee_correct=left_knee_correct if 'left_knee_correct' in locals() else None,
+                right_foot_direction=right_foot_direction if 'right_foot_direction' in locals() else None,
+                angle_right_knee=angle_right_knee if 'angle_right_knee' in locals() else None,
+                right_knee_correct=right_knee_correct if 'right_knee_correct' in locals() else None,
+                export_knee=export_knee
+            )
+
         frame_count += 1
 
-    if output_csv:
-        csv_file.close()
-
-    # Release the video capture and close the window
+    # Clean up
     cap_file.release()
     cv2.destroyAllWindows()
-    plt.ioff()
-    plt.show()
+    if output_csv:
+        csv_file.close()
+        # Format plots before saving
+        fig.suptitle(f'Knee Angles Over Time ({model.upper()})', fontsize=14)
+        ax1.set_title('Left Knee')
+        ax2.set_title('Right Knee')
+        ax1.grid(True)
+        ax2.grid(True)
+        ax1.set_xlabel('Time (s)')
+        ax2.set_xlabel('Time (s)')
+        ax1.set_ylabel('Angle (degrees)')
+        ax2.set_ylabel('Angle (degrees)')
+        
+        # Adjust layout and save
+        plt.tight_layout()
+        plot_file = output_csv.rsplit('.', 1)[0] + '.png'
+        plt.savefig(plot_file, dpi=300, bbox_inches='tight')
+        print(f"Plot saved to: {plot_file}")
+    
+    # Keep plot window open
+    # plt.ioff()
+    # plt.show()
     print("Finished processing the video.")
 
 def main(video_file, output_csv, export_knee, direction=None, model='mp2d'):
@@ -795,6 +1511,9 @@ def main(video_file, output_csv, export_knee, direction=None, model='mp2d'):
             
         if model == 'yolo2d' and not YOLO_AVAILABLE:
             raise ValueError("YOLO model requires ultralytics. Install with: pip install ultralytics")
+            
+        if model in ['mmpose2d', 'mmpose3d'] and not MMPOSE_AVAILABLE:
+            raise ValueError("MMPose models require MMPose. Install with: pip install openmim && mim install mmengine && mim install 'mmcv>=2.0.1' && mim install 'mmpose>=1.1.0'")
             
         output_dir = os.path.dirname(output_csv)
         if output_dir and not os.path.exists(output_dir):
@@ -822,9 +1541,9 @@ if __name__ == "__main__":
                        required=True,
                        help="Movement direction (determines view mode)")
     parser.add_argument("--model", type=str,
-                       choices=['mp2d', 'mp3d', 'yolo2d'],
+                       choices=['mp2d', 'mp3d', 'yolo2d', 'mmpose2d', 'mmpose3d'],
                        default='mp2d',
-                       help="Model type: mp2d for 2D MediaPipe, mp3d for 3D MediaPipe, or yolo2d for YOLO11-Pose 2D")
+                       help="Model type: mp2d for 2D MediaPipe, mp3d for 3D MediaPipe, yolo2d for YOLO11-Pose 2D, mmpose2d for MMPose 2D, or mmpose3d for MMPose 3D")
 
     args = parser.parse_args()
 
