@@ -8,6 +8,7 @@ import threading
 import queue
 import os
 import sys
+import numpy as np
 
 # Custom pose connections
 POSE_CONNECTIONS_BODY = [
@@ -40,6 +41,10 @@ def distance(a, b):
     # Calculate the Euclidean distance between two points
     return math.sqrt(distance2(a, b))
 
+def distance_3d(a, b):
+    # Calculate the 3D Euclidean distance between two points
+    return math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2 + (a.z - b.z) ** 2)
+
 def angle(a, b, c):
     # Calculate the measure of the angle B 
     # that is between two lines (AB and BC) 
@@ -49,9 +54,38 @@ def angle(a, b, c):
         return 0
     return math.degrees(math.acos((distance2(a, b) + distance2(b, c) - distance2(a, c)) / (2 * distance(a, b) * distance(b, c))))
 
+def calculate_angle_3d(a, b, c):
+    """
+    Calculate 3D angle between three points using 3D coordinates
+    Args:
+        a: hip point (3D)
+        b: knee point (3D) 
+        c: ankle point (3D)
+    Returns:
+        angle in degrees
+    """
+    # Calculate 3D vectors
+    vec_ba = np.array([a.x - b.x, a.y - b.y, a.z - b.z])
+    vec_bc = np.array([c.x - b.x, c.y - b.y, c.z - b.z])
+    
+    # Calculate dot product and magnitudes
+    dot_product = np.dot(vec_ba, vec_bc)
+    magnitude_ba = np.linalg.norm(vec_ba)
+    magnitude_bc = np.linalg.norm(vec_bc)
+    
+    # Avoid division by zero
+    if magnitude_ba * magnitude_bc == 0:
+        return 0
+    
+    # Calculate angle using dot product formula
+    cos_angle = dot_product / (magnitude_ba * magnitude_bc)
+    cos_angle = max(-1, min(1, cos_angle))  # Clamp to [-1, 1] to avoid numerical errors
+    
+    return math.degrees(math.acos(cos_angle))
+
 def calculate_angle(a, b, c, view_type='side', max_ab=None, max_bc=None):
     """
-    Calculate angle between three points based on view type
+    Calculate angle between three points based on view type (for 2D model)
     Args:
         a: hip point
         b: knee point 
@@ -90,7 +124,7 @@ def calculate_angle(a, b, c, view_type='side', max_ab=None, max_bc=None):
         
         return math.degrees(math.acos(cos_angle))
 
-def process_video(video_file, export_knee, output_csv=None, direction=None):
+def process_video(video_file, export_knee, output_csv=None, direction=None, model='mp2d'):
     """Process video file for knee angle analysis"""
     # Initialize video capture
     cap_file = cv2.VideoCapture(video_file)
@@ -106,9 +140,10 @@ def process_video(video_file, export_knee, output_csv=None, direction=None):
     delay = int(1000 / fps)
     frame_interval = int(fps / 2)
 
-    # Set up MediaPipe Pose with a lighter model
+    # Set up MediaPipe Pose with model complexity based on 2D/3D choice
+    model_complexity = 2 if model == 'mp3d' else 0  # Higher complexity for 3D
     mp_pose = mp.solutions.pose.Pose(
-        model_complexity=0,  # Use the lightest model (0, 1, or 2)
+        model_complexity=model_complexity,
         min_detection_confidence=0.5,
         min_tracking_confidence=0.5
     )
@@ -128,20 +163,19 @@ def process_video(video_file, export_knee, output_csv=None, direction=None):
     plt.ion()
     fig, (ax1, ax2) = plt.subplots(2, 1)
     fig.subplots_adjust(hspace=0.5)  # Increase space between plots
-    ax1.set_title('Left Knee Angle')
+    ax1.set_title(f'Left Knee Angle ({model.upper()})')
     ax1.set_xlabel('Time (s)')
     ax1.set_ylabel('Angle (degrees)')
-    ax2.set_title('Right Knee Angle')
+    ax2.set_title(f'Right Knee Angle ({model.upper()})')
     ax2.set_xlabel('Time (s)')
     ax2.set_ylabel('Angle (degrees)')
     left_knee_angles = []
     right_knee_angles = []
     timeframes = []
 
-    # Compute the length of the left thigh and right thigh
+    # For 2D model - compute thigh and calf lengths
     left_thigh_length = 0
     right_thigh_length = 0
-    # Compute the length of the left calf and right calf
     left_calf_length = 0
     right_calf_length = 0
 
@@ -179,21 +213,24 @@ def process_video(video_file, export_knee, output_csv=None, direction=None):
                 left_foot_index = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_FOOT_INDEX]
                 left_heel = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_HEEL]
 
-                # Calculate the left thigh and left calf
-                left_thigh_length = max(left_thigh_length, abs(left_hip.y - left_knee.y))
-                left_calf_length = max(left_calf_length, abs(left_knee.y - left_ankle.y))
-                
-                angle_left_knee = calculate_angle(
-                    left_hip, 
-                    left_knee, 
-                    left_ankle, 
-                    view_type='front' if direction == 'forward' else 'side',
-                    max_ab=left_thigh_length,
-                    max_bc=left_calf_length
-                )
+                # Calculate angle based on model type
+                if model == 'mp3d':
+                    angle_left_knee = calculate_angle_3d(left_hip, left_knee, left_ankle)
+                else:
+                    # Calculate the left thigh and left calf for 2D model
+                    left_thigh_length = max(left_thigh_length, abs(left_hip.y - left_knee.y))
+                    left_calf_length = max(left_calf_length, abs(left_knee.y - left_ankle.y))
+                    
+                    angle_left_knee = calculate_angle(
+                        left_hip, 
+                        left_knee, 
+                        left_ankle, 
+                        view_type='front' if direction == 'forward' else 'side',
+                        max_ab=left_thigh_length,
+                        max_bc=left_calf_length
+                    )
 
-
-                text_left_knee = f"LEFT KNEE\nANGLE: {angle_left_knee:.2f}"
+                text_left_knee = f"LEFT KNEE ({model.upper()})\nANGLE: {angle_left_knee:.2f}"
                 text_x_left = 10  # Left side of the frame
                 text_y_left = frame_file.shape[0] - 150
                 for i, line in enumerate(text_left_knee.split('\n')):
@@ -255,22 +292,25 @@ def process_video(video_file, export_knee, output_csv=None, direction=None):
                 left_knee = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_KNEE]
                 left_ankle = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.LEFT_ANKLE]
 
-                # Calculate the left thigh and left calf
-                left_thigh_length = max(left_thigh_length, abs(left_hip.y - left_knee.y))
-                left_calf_length = max(left_calf_length, abs(left_knee.y - left_ankle.y))
-                
-                angle_left_knee = calculate_angle(
-                    left_hip, 
-                    left_knee, 
-                    left_ankle, 
-                    view_type='front' if direction == 'forward' else 'side',
-                    max_ab=left_thigh_length,
-                    max_bc=left_calf_length
-                )
+                # Calculate angle based on model type
+                if model == 'mp3d':
+                    angle_left_knee = calculate_angle_3d(left_hip, left_knee, left_ankle)
+                else:
+                    # Calculate the left thigh and left calf for 2D model
+                    left_thigh_length = max(left_thigh_length, abs(left_hip.y - left_knee.y))
+                    left_calf_length = max(left_calf_length, abs(left_knee.y - left_ankle.y))
+                    
+                    angle_left_knee = calculate_angle(
+                        left_hip, 
+                        left_knee, 
+                        left_ankle, 
+                        view_type='front' if direction == 'forward' else 'side',
+                        max_ab=left_thigh_length,
+                        max_bc=left_calf_length
+                    )
 
-                
-                text_left_knee = f"LEFT KNEE\nANGLE: {angle_left_knee:.2f}"
-                text_x_left = 10  # Left side of the frame
+                text_left_knee = f"LEFT KNEE ({model.upper()})\nANGLE: {angle_left_knee:.2f}"
+                text_x_left = 10  # Left side of the frame  
                 text_y_left = frame_file.shape[0] - 150
                 for i, line in enumerate(text_left_knee.split('\n')):
                     cv2.putText(frame_file, line, (text_x_left, text_y_left + i*30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)  # Green color for left knee text
@@ -299,21 +339,24 @@ def process_video(video_file, export_knee, output_csv=None, direction=None):
                 right_foot_index = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_FOOT_INDEX]
                 right_heel = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_HEEL]
 
-                # Calculate the right thigh and right calf
-                right_thigh_length = max(right_thigh_length, abs(right_hip.y - right_knee.y))
-                right_calf_length = max(right_calf_length, abs(right_knee.y - right_ankle.y))
-                
-                angle_right_knee = calculate_angle(
-                    right_hip, 
-                    right_knee, 
-                    right_ankle, 
-                    view_type='front' if direction == 'forward' else 'side',
-                    max_ab=right_thigh_length,
-                    max_bc=right_calf_length
-                )
+                # Calculate angle based on model type
+                if model == 'mp3d':
+                    angle_right_knee = calculate_angle_3d(right_hip, right_knee, right_ankle)
+                else:
+                    # Calculate the right thigh and right calf for 2D model
+                    right_thigh_length = max(right_thigh_length, abs(right_hip.y - right_knee.y))
+                    right_calf_length = max(right_calf_length, abs(right_knee.y - right_ankle.y))
+                    
+                    angle_right_knee = calculate_angle(
+                        right_hip, 
+                        right_knee, 
+                        right_ankle, 
+                        view_type='front' if direction == 'forward' else 'side',
+                        max_ab=right_thigh_length,
+                        max_bc=right_calf_length
+                    )
 
-                
-                text_right_knee = f"RIGHT KNEE\nANGLE: {angle_right_knee:.2f}"
+                text_right_knee = f"RIGHT KNEE ({model.upper()})\nANGLE: {angle_right_knee:.2f}"
                 text_size, _ = cv2.getTextSize(text_right_knee.split('\n')[1], cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
                 text_x_right = frame_file.shape[1] - text_size[0] - 10  # Right side of the frame
                 text_y_right = frame_file.shape[0] - 150
@@ -374,20 +417,24 @@ def process_video(video_file, export_knee, output_csv=None, direction=None):
                 right_knee = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_KNEE]
                 right_ankle = results.pose_landmarks.landmark[mp.solutions.pose.PoseLandmark.RIGHT_ANKLE]
 
-                # Calculate the right thigh and right calf
-                right_thigh_length = max(right_thigh_length, abs(right_hip.y - right_knee.y))
-                right_calf_length = max(right_calf_length, abs(right_knee.y - right_ankle.y))
-                
-                angle_right_knee = calculate_angle(
-                    right_hip, 
-                    right_knee, 
-                    right_ankle, 
-                    view_type='front' if direction == 'forward' else 'side',
-                    max_ab=right_thigh_length,
-                    max_bc=right_calf_length
-                )
+                # Calculate angle based on model type
+                if model == 'mp3d':
+                    angle_right_knee = calculate_angle_3d(right_hip, right_knee, right_ankle)
+                else:
+                    # Calculate the right thigh and right calf for 2D model
+                    right_thigh_length = max(right_thigh_length, abs(right_hip.y - right_knee.y))
+                    right_calf_length = max(right_calf_length, abs(right_knee.y - right_ankle.y))
+                    
+                    angle_right_knee = calculate_angle(
+                        right_hip, 
+                        right_knee, 
+                        right_ankle, 
+                        view_type='front' if direction == 'forward' else 'side',
+                        max_ab=right_thigh_length,
+                        max_bc=right_calf_length
+                    )
 
-                text_right_knee = f"RIGHT KNEE\nANGLE: {angle_right_knee:.2f}"
+                text_right_knee = f"RIGHT KNEE ({model.upper()})\nANGLE: {angle_right_knee:.2f}"
                 text_size, _ = cv2.getTextSize(text_right_knee.split('\n')[1], cv2.FONT_HERSHEY_SIMPLEX, 1, 2)
                 text_x_right = frame_file.shape[1] - text_size[0] - 10  # Right side of the frame
                 text_y_right = frame_file.shape[0] - 150
@@ -427,7 +474,7 @@ def process_video(video_file, export_knee, output_csv=None, direction=None):
                                  right_foot_direction, angle_right_knee, right_knee_correct])
         
         # Show the frame
-        cv2.imshow("Video and Pose Estimation", frame_file)
+        cv2.imshow(f"Video and Pose Estimation ({model.upper()})", frame_file)
 
         # Update the plot
         plt.pause(0.01)
@@ -448,7 +495,7 @@ def process_video(video_file, export_knee, output_csv=None, direction=None):
     plt.show()
     print("Finished processing the video.")
 
-def main(video_file, output_csv, export_knee, direction=None):
+def main(video_file, output_csv, export_knee, direction=None, model='mp2d'):
     """Main function with error handling"""
     try:
         if not os.path.exists(video_file):
@@ -458,7 +505,7 @@ def main(video_file, output_csv, export_knee, direction=None):
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir)
             
-        process_video(video_file, export_knee, output_csv, direction)
+        process_video(video_file, export_knee, output_csv, direction, model)
         
     except (FileNotFoundError, ValueError) as e:
         print(f"Error: {e}")
@@ -479,7 +526,11 @@ if __name__ == "__main__":
                        choices=['left', 'right', 'forward'], 
                        required=True,
                        help="Movement direction (determines view mode)")
+    parser.add_argument("--model", type=str,
+                       choices=['mp2d', 'mp3d'],
+                       default='mp2d',
+                       help="Model type: mp2d for 2D MediaPipe or mp3d for 3D MediaPipe")
 
     args = parser.parse_args()
 
-    main(args.video_file, args.output_csv, args.export_knee, args.direction)
+    main(args.video_file, args.output_csv, args.export_knee, args.direction, args.model)
