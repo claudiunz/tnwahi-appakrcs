@@ -1,0 +1,103 @@
+Statistics Report
+==================================================
+
+Processing Statistics:
+------------------------------
+Total frames: 780
+Video duration: 25.99 seconds
+Average FPS: 30.01
+Processing time (ms):
+  Average: 193.87
+  Min: 184.64
+  Max: 394.83
+  Std dev: 10.33
+
+Left Knee Analysis:
+------------------------------
+
+Keypoint Detection Confidence:
+  Hip: 0.981
+  Knee: 0.987
+  Ankle: 1.013
+  Minimum confidence: 0.911
+  Missing keypoint rate: 0.0%
+
+Hip Stability:
+  Average movement: 3.455
+  Max movement: 18.750
+  Movement std: 3.439
+
+Knee Stability:
+  Average movement: 2.551
+  Max movement: 14.062
+  Movement std: 2.809
+
+Ankle Stability:
+  Average movement: 1.026
+  Max movement: 6.629
+  Movement std: 1.986
+
+Angle Statistics:
+  Mean angle: 127.84°
+  Angle std: 24.01°
+  Range: 99.43° (80.6° - 180.0°)
+
+Angle Smoothness:
+  Average velocity: 2.46°/frame
+  Max velocity: 25.06°/frame
+  Velocity std: 2.89°/frame
+
+Angle Outliers:
+  Count: 4 frames
+  Percentage: 0.5%
+  Max deviation: 2.2 std
+
+Angle Consistency:
+  Average variation: 14.53°
+  Max variation: 27.93°
+  Trend changes: 26
+
+Right Knee Analysis:
+------------------------------
+
+Keypoint Detection Confidence:
+  Hip: 0.990
+  Knee: 1.000
+  Ankle: 1.025
+  Minimum confidence: 0.915
+  Missing keypoint rate: 0.0%
+
+Hip Stability:
+  Average movement: 3.386
+  Max movement: 18.750
+  Movement std: 3.372
+
+Knee Stability:
+  Average movement: 2.261
+  Max movement: 10.482
+  Movement std: 2.650
+
+Ankle Stability:
+  Average movement: 1.025
+  Max movement: 6.629
+  Movement std: 1.994
+
+Angle Statistics:
+  Mean angle: 125.97°
+  Angle std: 23.67°
+  Range: 97.78° (82.2° - 180.0°)
+
+Angle Smoothness:
+  Average velocity: 2.33°/frame
+  Max velocity: 17.97°/frame
+  Velocity std: 2.88°/frame
+
+Angle Outliers:
+  Count: 6 frames
+  Percentage: 0.8%
+  Max deviation: 2.3 std
+
+Angle Consistency:
+  Average variation: 14.28°
+  Max variation: 27.39°
+  Trend changes: 28

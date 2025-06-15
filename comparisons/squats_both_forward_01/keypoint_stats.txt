@@ -1,0 +1,15 @@
+Detailed Keypoint and Movement Statistics
+=====================================
+
+Note: Movement values are in pixels for 2D models and normalized coordinates for 3D models
+
+Model        |  Knee | Min Conf |  Miss % | Out # |  Out % | Max Dev | Avg Mov
+------------ | ----- | -------- | ------- | ----- | ------ | ------- | -------
+MEDIAPIPE 2D |  left |    0.965 |    0.0% |     5 |   0.6% |     2.5 |     nan
+MEDIAPIPE 2D | right |    0.961 |    0.0% |     9 |   1.2% |     2.3 |     nan
+MEDIAPIPE 3D |  left |    0.858 |    0.0% |     0 |   0.0% |     0.0 |    0.01
+MEDIAPIPE 3D | right |    0.917 |    0.0% |     0 |   0.0% |     0.0 |    0.01
+MMPOSE 2D    |  left |    0.724 |    0.0% |     4 |   0.5% |     2.2 |     nan
+MMPOSE 2D    | right |    0.772 |    0.0% |     6 |   0.8% |     2.3 |     nan
+MMPOSE 3D    |  left |    0.735 |    0.0% |     7 |   0.9% |     2.2 |     nan
+MMPOSE 3D    | right |    0.759 |    0.0% |    14 |   1.8% |     2.1 |     nan

@@ -1,0 +1,9 @@
+model,knee,min_confidence,missing_rate,outlier_count,outlier_rate,max_deviation,avg_movement
+MEDIAPIPE 2D,left,0.965,0.0,5,0.641,2.457,
+MEDIAPIPE 2D,right,0.961,0.0,9,1.154,2.337,
+MEDIAPIPE 3D,left,0.858,0.0,0,0.0,0.0,0.014
+MEDIAPIPE 3D,right,0.917,0.0,0,0.0,0.0,0.015
+MMPOSE 2D,left,0.724,0.0,4,0.513,2.172,
+MMPOSE 2D,right,0.772,0.0,6,0.769,2.283,
+MMPOSE 3D,left,0.735,0.0,7,0.897,2.174,
+MMPOSE 3D,right,0.759,0.0,14,1.795,2.12,

@@ -1,0 +1,9 @@
+Summary of Knee Angle Statistics for Each Model
+==========================================
+
+Model        |  Side |     Mean |      Std |      Min |      Max |    Range
+------------ | ----- | -------- | -------- | -------- | -------- | --------
+MEDIAPIPE 2D | Right |   133.32 |    28.29 |    79.68 |   179.90 |   100.22
+MEDIAPIPE 3D | Right |   152.68 |    12.90 |   123.48 |   170.03 |    46.55
+MMPOSE 2D    | Right |   152.23 |    13.65 |   119.86 |   176.42 |    56.56
+MMPOSE 3D    | Right |   150.51 |    15.34 |   118.45 |   176.05 |    57.60

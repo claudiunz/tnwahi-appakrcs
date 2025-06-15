@@ -1,5 +1,3 @@
 models/
-output/
 videos/
-reports/
-comparisons/
+tests/

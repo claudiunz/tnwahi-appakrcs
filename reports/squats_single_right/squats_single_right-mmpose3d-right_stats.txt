@@ -1,0 +1,60 @@
+Statistics Report
+==================================================
+
+Processing Statistics:
+------------------------------
+Total frames: 1481
+Video duration: 24.69 seconds
+Average FPS: 59.98
+Processing time (ms):
+  Average: 225.02
+  Min: 139.63
+  Max: 406.09
+  Std dev: 9.75
+
+Left Knee: Not tracked
+
+Right Knee Analysis:
+------------------------------
+
+Keypoint Detection Confidence:
+  Hip: 0.648
+  Knee: 0.643
+  Ankle: 0.653
+  Minimum confidence: 0.415
+  Missing keypoint rate: 2.8%
+
+Hip Stability:
+  Average movement: 1.295
+  Max movement: 9.375
+  Movement std: 2.167
+
+Knee Stability:
+  Average movement: 1.605
+  Max movement: 10.482
+  Movement std: 2.349
+
+Ankle Stability:
+  Average movement: 1.695
+  Max movement: 19.887
+  Movement std: 2.713
+
+Angle Statistics:
+  Mean angle: 150.51°
+  Angle std: 15.34°
+  Range: 57.60° (118.5° - 176.1°)
+
+Angle Smoothness:
+  Average velocity: 1.10°/frame
+  Max velocity: 7.18°/frame
+  Velocity std: 1.41°/frame
+
+Angle Outliers:
+  Count: 1 frames
+  Percentage: 0.1%
+  Max deviation: 2.1 std
+
+Angle Consistency:
+  Average variation: 3.17°
+  Max variation: 9.05°
+  Trend changes: 106

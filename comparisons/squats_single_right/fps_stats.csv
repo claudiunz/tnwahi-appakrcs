@@ -1,0 +1,5 @@
+,mean,std,min,max
+mediapipe 2d,30.74,4.69,4.92,36.7
+mediapipe 3d,13.04,1.02,3.34,14.28
+mmpose 2d,6.07,0.28,2.95,6.87
+mmpose 3d,4.45,0.17,2.46,7.16
